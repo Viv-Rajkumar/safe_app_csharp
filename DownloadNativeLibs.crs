@@ -27,21 +27,43 @@ use std::path::Path;
 use std::process;
 use zip::ZipArchive;
 
-const ARCHIVE_NAME: &'static str = "alpha-2.zip";
-const BASE_URL: &'static str = "https://s3.eu-west-2.amazonaws.com/safe-app-csharp/";
+const TAG: &'static str = "v0.4.0";
 const ANDROID_DIR_NAME: &'static str = "SafeApp.AppBindings.Android";
 const IOS_DIR_NAME: &'static str = "SafeApp.AppBindings.iOS";
+const DESKTOP_DIR_NAME: &'static str = "SafeApp.AppBindings.Desktop";
+
+fn download_zip_file(aws_bucket: &str, filename: &str) -> ZipArchive<Cursor<Vec<u8>>> {
+    let url = format!("https://s3.eu-west-2.amazonaws.com/{}/{}", aws_bucket, filename);
+    println!("Downloading {}", url);
+    let mut response = unwrap!(reqwest::get(&url));
+    if !response.status().is_success() {
+        panic!(
+            "\nFailed to download {}.\nResponse status: {}\nResponse \
+                   headers:\n{}",
+            filename,
+            response.status(),
+            response.headers()
+        );
+    }
+    let content_length = **unwrap!(response.headers().get::<ContentLength>()) as usize;
+    let mut buffer = vec![0; content_length];
+    assert_eq!(unwrap!(response.read_to_end(&mut buffer)), content_length);
+    let cursor = Cursor::new(buffer);
+    unwrap!(ZipArchive::new(cursor))
+}
 
 fn main() {
     let root_path = unwrap!(Path::new(&unwrap!(env::var("CARGO_SCRIPT_SCRIPT_PATH"))).parent())
         .to_path_buf();
     let android_root = root_path.as_path().join(ANDROID_DIR_NAME);
     let ios_root = root_path.as_path().join(IOS_DIR_NAME);
+    let desktop_root = root_path.as_path().join(DESKTOP_DIR_NAME);
 
-    // If either of the target 'lib' directories exist, ask the user whether to remove them or not.
+    // If any of the target 'lib' directories exist, ask the user whether to remove them or not.
     let android_lib_dir = android_root.as_path().join("lib");
     let ios_lib_dir = ios_root.as_path().join("lib");
-    while android_lib_dir.exists() || ios_lib_dir.exists() {
+    let desktop_lib_dir = desktop_root.as_path().join("lib");
+    while android_lib_dir.exists() || ios_lib_dir.exists() || desktop_lib_dir.exists() {
         let mut it_or_them = "";
         if android_lib_dir.exists() {
             yellow!("{}", android_lib_dir.display());
@@ -50,6 +72,15 @@ fn main() {
         }
         if ios_lib_dir.exists() {
             yellow!("{}", ios_lib_dir.display());
+            dark_yellow_ln!(" already exists.");
+            if it_or_them.is_empty() {
+                it_or_them = "it";
+            } else {
+                it_or_them = "them";
+            }
+        }
+        if desktop_lib_dir.exists() {
+            yellow!("{}", desktop_lib_dir.display());
             dark_yellow_ln!(" already exists.");
             if it_or_them.is_empty() {
                 it_or_them = "it";
@@ -66,6 +97,7 @@ fn main() {
             "Y" | "y" => {
                 let _ = fs::remove_dir_all(&android_lib_dir);
                 let _ = fs::remove_dir_all(&ios_lib_dir);
+                let _ = fs::remove_dir_all(&desktop_lib_dir);
             }
             "N" | "n" | "" => {
                 yellow_ln!("Aborting.");
@@ -77,26 +109,8 @@ fn main() {
         }
     }
 
-    // Download the zip file to an in-memory buffer.
-    let url = format!("{}{}", BASE_URL, ARCHIVE_NAME);
-    println!("Downloading {}", url);
-    let mut response = unwrap!(reqwest::get(&url));
-    if !response.status().is_success() {
-        panic!(
-            "\nFailed to download {}.\nResponse status: {}\nResponse \
-                   headers:\n{}",
-            ARCHIVE_NAME,
-            response.status(),
-            response.headers()
-        );
-    }
-    let content_length = **unwrap!(response.headers().get::<ContentLength>()) as usize;
-    let mut buffer = vec![0; content_length];
-    assert_eq!(unwrap!(response.read_to_end(&mut buffer)), content_length);
-    let cursor = Cursor::new(buffer);
-    let mut zip_archive = unwrap!(ZipArchive::new(cursor));
-
-    // Unpack the archive.
+    // Download the Android/iOS zip file to an in-memory buffer and unpack it.
+    let mut zip_archive = download_zip_file("safe-mobile", &format!("{}.zip", TAG));
     for i in 0..zip_archive.len() {
         let mut entry = unwrap!(zip_archive.by_index(i));
         // Decide which target directory the entry belongs in; android or ios.
@@ -110,7 +124,7 @@ fn main() {
                 entry.name()
             );
         };
-        // If the entry is a directory, create it, else check it's a file and uncompress it.
+        // If the entry is a directory, create it, else check it's a file and unpack it.
         let unix_mode = unwrap!(entry.unix_mode());
         if unix_mode & S_IFDIR as u32 > 0 {
             unwrap!(fs::create_dir_all(&path));
@@ -127,5 +141,37 @@ fn main() {
             );
         }
     }
+
+    // Download desktop zip files and unpack them.
+    for kind in &["mock", "non-mock"] {
+        let base_path = desktop_lib_dir.join(kind);
+        unwrap!(fs::create_dir_all(&base_path));
+        for platform in &["linux", "osx", "win"] {
+            let filename = if *kind == "mock" {
+                format!("safe_app-mock-{}-{}-x64.zip", TAG, platform)
+            } else {
+                format!("safe_app-{}-{}-x64.zip", TAG, platform)
+            };
+            zip_archive = download_zip_file("safe-client-libs", &filename);
+            // Check the archive has only one entry which is a file and unpack it.
+            assert_eq!(zip_archive.len(), 1);
+            let mut entry = unwrap!(zip_archive.by_index(0));
+            let path = base_path.join(entry.name());
+            let unix_mode = unwrap!(entry.unix_mode());
+            if unix_mode & S_IFREG as u32 > 0 {
+                println!("Unpacking {}", path.display());
+                let mut file = unwrap!(File::create(&path));
+                let uncompressed_size = entry.size();
+                assert_eq!(unwrap!(io::copy(&mut entry, &mut file)), uncompressed_size);
+            } else {
+                panic!(
+                    "Unhandled Unix mode of {:o} for {}",
+                    unix_mode,
+                    path.display()
+                );
+            }
+        }
+    }
+
     green_ln!("Done.");
 }
