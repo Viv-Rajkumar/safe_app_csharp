@@ -1,7 +1,6 @@
 #!/usr/bin/env run-cargo-script
 //! ```cargo
 //! [dependencies]
-//! colour = "0.2"
 //! libc = "0.2"
 //! reqwest = "0.8"
 //! unwrap = "1.1"
@@ -10,8 +9,6 @@
 
 #![allow(non_snake_case)]
 
-#[macro_use]
-extern crate colour;
 extern crate libc;
 extern crate reqwest;
 #[macro_use]
@@ -22,9 +19,10 @@ use libc::{S_IFDIR, S_IFREG};
 use reqwest::header::ContentLength;
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Cursor, Read};
 use std::path::Path;
-use std::process;
+use std::thread;
+use std::time::Duration;
 use zip::ZipArchive;
 
 const TAG: &'static str = "v0.4.0";
@@ -38,8 +36,7 @@ fn download_zip_file(aws_bucket: &str, filename: &str) -> ZipArchive<Cursor<Vec<
     let mut response = unwrap!(reqwest::get(&url));
     if !response.status().is_success() {
         panic!(
-            "\nFailed to download {}.\nResponse status: {}\nResponse \
-                   headers:\n{}",
+            "\nFailed to download {}.\nResponse status: {}\nResponse headers:\n{}",
             filename,
             response.status(),
             response.headers()
@@ -52,6 +49,15 @@ fn download_zip_file(aws_bucket: &str, filename: &str) -> ZipArchive<Cursor<Vec<
     unwrap!(ZipArchive::new(cursor))
 }
 
+fn needs_downloaded(dir: &Path) -> bool {
+    if dir.join(TAG).exists() {
+        false
+    } else {
+        let _ = fs::remove_dir_all(dir);
+        true
+    }
+}
+
 fn main() {
     let root_path = unwrap!(Path::new(&unwrap!(env::var("CARGO_SCRIPT_SCRIPT_PATH"))).parent())
         .to_path_buf();
@@ -59,119 +65,78 @@ fn main() {
     let ios_root = root_path.as_path().join(IOS_DIR_NAME);
     let desktop_root = root_path.as_path().join(DESKTOP_DIR_NAME);
 
-    // If any of the target 'lib' directories exist, ask the user whether to remove them or not.
+    // For each of the target 'lib' directories, if it exists and contains a file named as per
+    // `TAG`, assume that directory is up to date and needs no further action.
     let android_lib_dir = android_root.as_path().join("lib");
     let ios_lib_dir = ios_root.as_path().join("lib");
     let desktop_lib_dir = desktop_root.as_path().join("lib");
-    while android_lib_dir.exists() || ios_lib_dir.exists() || desktop_lib_dir.exists() {
-        let mut it_or_them = "";
-        if android_lib_dir.exists() {
-            yellow!("{}", android_lib_dir.display());
-            dark_yellow_ln!(" already exists.");
-            it_or_them = "it";
-        }
-        if ios_lib_dir.exists() {
-            yellow!("{}", ios_lib_dir.display());
-            dark_yellow_ln!(" already exists.");
-            if it_or_them.is_empty() {
-                it_or_them = "it";
-            } else {
-                it_or_them = "them";
-            }
-        }
-        if desktop_lib_dir.exists() {
-            yellow!("{}", desktop_lib_dir.display());
-            dark_yellow_ln!(" already exists.");
-            if it_or_them.is_empty() {
-                it_or_them = "it";
-            } else {
-                it_or_them = "them";
-            }
-        }
-        let mut input = String::new();
-        print!("OK to delete {}?  [y/N]: ", it_or_them);
-        unwrap!(io::stdout().flush());
-        let _ = unwrap!(io::stdin().read_line(&mut input));
-        input = input.trim_right().to_string();
-        match input.as_str() {
-            "Y" | "y" => {
-                let _ = fs::remove_dir_all(&android_lib_dir);
-                let _ = fs::remove_dir_all(&ios_lib_dir);
-                let _ = fs::remove_dir_all(&desktop_lib_dir);
-            }
-            "N" | "n" | "" => {
-                yellow_ln!("Aborting.");
-                process::exit(0);
-            }
-            _ => {
-                red_ln!("Enter 'y' or 'n' only.");
-            }
-        }
-    }
 
-    // Download the Android/iOS zip file to an in-memory buffer and unpack it.
-    let mut zip_archive = download_zip_file("safe-mobile", &format!("{}.zip", TAG));
-    for i in 0..zip_archive.len() {
-        let mut entry = unwrap!(zip_archive.by_index(i));
-        // Decide which target directory the entry belongs in; android or ios.
-        let path = if entry.name().starts_with("android/") {
-            android_root.join(&entry.name()[8..])
-        } else if entry.name().starts_with("ios/") {
-            ios_root.join(&entry.name()[4..])
-        } else {
-            panic!(
-                "Zip file contains {} which isn't in 'android/' or 'ios/'",
-                entry.name()
-            );
-        };
-        // If the entry is a directory, create it, else check it's a file and unpack it.
-        let unix_mode = unwrap!(entry.unix_mode());
-        if unix_mode & S_IFDIR as u32 > 0 {
-            unwrap!(fs::create_dir_all(&path));
-        } else if unix_mode & S_IFREG as u32 > 0 {
-            println!("Unpacking {}", path.display());
-            let mut file = unwrap!(File::create(&path));
-            let uncompressed_size = entry.size();
-            assert_eq!(unwrap!(io::copy(&mut entry, &mut file)), uncompressed_size);
-        } else {
-            panic!(
-                "Unhandled Unix mode of {:o} for {}",
-                unix_mode,
-                path.display()
-            );
-        }
-    }
-
-    // Download desktop zip files and unpack them.
-    for kind in &["mock", "non-mock"] {
-        let base_path = desktop_lib_dir.join(kind);
-        unwrap!(fs::create_dir_all(&base_path));
-        for platform in &["linux", "osx", "win"] {
-            let filename = if *kind == "mock" {
-                format!("safe_app-mock-{}-{}-x64.zip", TAG, platform)
+    if needs_downloaded(&android_lib_dir) || needs_downloaded(&ios_lib_dir) {
+        // Download the Android/iOS zip file to an in-memory buffer and unpack it.
+        let mut zip_archive = download_zip_file("safe-mobile", &format!("{}.zip", TAG));
+        for i in 0..zip_archive.len() {
+            let mut entry = unwrap!(zip_archive.by_index(i));
+            // Decide which target directory the entry belongs in; android or ios.
+            let path = if entry.name().starts_with("android/") {
+                android_root.join(&entry.name()[8..])
+            } else if entry.name().starts_with("ios/") {
+                ios_root.join(&entry.name()[4..])
             } else {
-                format!("safe_app-{}-{}-x64.zip", TAG, platform)
+                panic!("Zip file contains {} which isn't in 'android/' or 'ios/'", entry.name());
             };
-            zip_archive = download_zip_file("safe-client-libs", &filename);
-            // Check the archive has only one entry which is a file and unpack it.
-            assert_eq!(zip_archive.len(), 1);
-            let mut entry = unwrap!(zip_archive.by_index(0));
-            let path = base_path.join(entry.name());
+            // If the entry is a directory, create it, else check it's a file and unpack it.
             let unix_mode = unwrap!(entry.unix_mode());
-            if unix_mode & S_IFREG as u32 > 0 {
+            if unix_mode & S_IFDIR as u32 > 0 {
+                unwrap!(fs::create_dir_all(&path));
+            } else if unix_mode & S_IFREG as u32 > 0 {
                 println!("Unpacking {}", path.display());
                 let mut file = unwrap!(File::create(&path));
                 let uncompressed_size = entry.size();
                 assert_eq!(unwrap!(io::copy(&mut entry, &mut file)), uncompressed_size);
             } else {
-                panic!(
-                    "Unhandled Unix mode of {:o} for {}",
-                    unix_mode,
-                    path.display()
-                );
+                panic!("Unhandled Unix mode of {:o} for {}", unix_mode, path.display());
             }
         }
+        let _ = unwrap!(File::create(&android_lib_dir.join(TAG)));
+        let _ = unwrap!(File::create(&ios_lib_dir.join(TAG)));
+    } else {
+        println!("{} already downloaded and up to date - skipping.", android_lib_dir.display());
+        println!("{} already downloaded and up to date - skipping.", ios_lib_dir.display());
     }
 
-    green_ln!("Done.");
+    if needs_downloaded(&desktop_lib_dir) {
+        // Hack for Windows panicking on an OS "Access is denied" error for `desktop_lib_dir`.
+        thread::sleep(Duration::from_millis(100));
+        // Download desktop zip files and unpack them.
+        for kind in &["mock", "non-mock"] {
+            let base_path = desktop_lib_dir.join(kind);
+            unwrap!(fs::create_dir_all(&base_path));
+            for platform in &["linux", "osx", "win"] {
+                let filename = if *kind == "mock" {
+                    format!("safe_app-mock-{}-{}-x64.zip", TAG, platform)
+                } else {
+                    format!("safe_app-{}-{}-x64.zip", TAG, platform)
+                };
+                let mut zip_archive = download_zip_file("safe-client-libs", &filename);
+                // Check the archive has only one entry which is a file and unpack it.
+                assert_eq!(zip_archive.len(), 1);
+                let mut entry = unwrap!(zip_archive.by_index(0));
+                let path = base_path.join(entry.name());
+                let unix_mode = unwrap!(entry.unix_mode());
+                if unix_mode & S_IFREG as u32 > 0 {
+                    println!("Unpacking {}", path.display());
+                    let mut file = unwrap!(File::create(&path));
+                    let uncompressed_size = entry.size();
+                    assert_eq!(unwrap!(io::copy(&mut entry, &mut file)), uncompressed_size);
+                } else {
+                    panic!("Unhandled Unix mode of {:o} for {}", unix_mode, path.display());
+                }
+            }
+        }
+        let _ = unwrap!(File::create(&desktop_lib_dir.join(TAG)));
+    } else {
+        println!("{} already downloaded and up to date - skipping.", desktop_lib_dir.display());
+    }
+
+    println!("Done.");
 }

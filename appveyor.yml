@@ -5,6 +5,9 @@ environment:
 cache:
   - '%USERPROFILE%\.cargo'
   - '%USERPROFILE%\.nuget\packages'
+  - '%APPVEYOR_BUILD_FOLDER%\SafeApp.AppBindings.Android\lib'
+  - '%APPVEYOR_BUILD_FOLDER%\SafeApp.AppBindings.Desktop\lib'
+  - '%APPVEYOR_BUILD_FOLDER%\SafeApp.AppBindings.iOS\lib'
 
 clone_depth: 1
 
