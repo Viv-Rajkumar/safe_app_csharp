@@ -81,7 +81,7 @@ namespace SafeApp.Utilities {
     Task MDataDelUserPermissionsAsync(IntPtr app, ref MDataInfo info, ulong userH, ulong version);
     Task<ulong> MDataEntriesNewAsync(IntPtr app);
     Task MDataEntriesInsertAsync(IntPtr app, ulong entriesH, List<byte> key, List<byte> value);
-    Task<IntPtr> MDataEntriesLenAsync(IntPtr app, ulong entriesH);
+    Task<ulong> MDataEntriesLenAsync(IntPtr app, ulong entriesH);
     Task<(List<byte>, ulong)> MDataEntriesGetAsync(IntPtr app, ulong entriesH, List<byte> key);
     Task MDataEntriesFreeAsync(IntPtr app, ulong entriesH);
     Task<ulong> MDataEntryActionsNewAsync(IntPtr app);
@@ -91,7 +91,7 @@ namespace SafeApp.Utilities {
     Task MDataEntryActionsFreeAsync(IntPtr app, ulong actionsH);
     Task<List<byte>> MDataEncodeMetadataAsync(ref MetadataResponse metadata);
     Task<ulong> MDataPermissionsNewAsync(IntPtr app);
-    Task<IntPtr> MDataPermissionsLenAsync(IntPtr app, ulong permissionsH);
+    Task<ulong> MDataPermissionsLenAsync(IntPtr app, ulong permissionsH);
     Task<PermissionSet> MDataPermissionsGetAsync(IntPtr app, ulong permissionsH, ulong userH);
     Task<List<UserPermissionSet>> MDataListPermissionSetsAsync(IntPtr app, ulong permissionsH);
     Task MDataPermissionsInsertAsync(IntPtr app, ulong permissionsH, ulong userH, ref PermissionSet permissionSet);

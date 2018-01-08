@@ -41,9 +41,8 @@ namespace SafeApp.MData {
       return AppBindings.MDataInfoRandomPublicAsync(typeTag);
     }
 
-    public async Task<List<byte>> SerialiseAsync(MDataInfo mDataInfo) {
-      var byteArray = await AppBindings.MDataInfoSerialiseAsync(ref mDataInfo);
-      return new List<byte>(byteArray);
+    public Task<List<byte>> SerialiseAsync(ref MDataInfo mDataInfo) {
+      return AppBindings.MDataInfoSerialiseAsync(ref mDataInfo);
     }
 
 

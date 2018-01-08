@@ -18,7 +18,7 @@ namespace SafeApp.Tests {
       using (encKeyPairTuple.Item2)
       {
         var rawKey = await session.Crypto.EncPubKeyGetAsync(encKeyPairTuple.Item1);
-        Assert.AreEqual(rawKey.Length, AppConstants.AsymSecretKeyLen);
+        Assert.AreEqual(rawKey.Length, AppConstants.AsymPublicKeyLen);
         var handle = await session.Crypto.EncPubKeyNewAsync(rawKey);
         Assert.NotNull(handle);
         rawKey = await session.Crypto.EncSecretKeyGetAsync(encKeyPairTuple.Item2);
@@ -42,7 +42,16 @@ namespace SafeApp.Tests {
         var decryptedBytes = await session.Crypto.DecryptSealedBoxAsync(cipherBytes, encKeyPairTuple.Item1, encKeyPairTuple.Item2);
         Assert.AreEqual(plainBytes, decryptedBytes);
       }
+      // TODO: uncommenting following hangs the test
       session.FreeApp();
+      var i = 0;
+    }
+
+    [Test]
+    public void Foo() {
+      var session = new Session(MockAuthResolver.Current.TestCreateApp());
+      session.FreeApp();
+      var i = 0;
     }
 
     [Test]

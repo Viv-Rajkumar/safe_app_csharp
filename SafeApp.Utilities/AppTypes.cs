@@ -6,8 +6,7 @@ using JetBrains.Annotations;
 
 [assembly: InternalsVisibleTo("SafeApp.AppBindings")]
 
-namespace SafeApp.Utilities
-{
+namespace SafeApp.Utilities {
   [PublicAPI]
   public enum MDataAction {
     Insert,
@@ -64,7 +63,7 @@ namespace SafeApp.Utilities
     internal AuthReq(AuthReqNative native) {
       App = native.App;
       AppContainer = native.AppContainer;
-      Containers = BindingUtils.CopyToObjectList<ContainerPermissions>(native.ContainersPtr, native.ContainersLen);
+      Containers = BindingUtils.CopyToObjectList<ContainerPermissions>(native.ContainersPtr, (int) native.ContainersLen);
     }
 
     internal AuthReqNative ToNative() {
@@ -72,8 +71,8 @@ namespace SafeApp.Utilities
         App = App,
         AppContainer = AppContainer,
         ContainersPtr = BindingUtils.CopyFromObjectList(Containers),
-        ContainersLen = (IntPtr) Containers.Count,
-        ContainersCap = (IntPtr) 0
+        ContainersLen = (ulong) Containers.Count,
+        ContainersCap = 0
       };
     }
   }
@@ -83,8 +82,8 @@ namespace SafeApp.Utilities
     [MarshalAs(UnmanagedType.U1)]
     public bool AppContainer;
     public IntPtr ContainersPtr;
-    public IntPtr ContainersLen;
-    public IntPtr ContainersCap;
+    public ulong ContainersLen;
+    public ulong ContainersCap;
 
     internal void Free() {
       BindingUtils.FreeList(ref ContainersPtr, ref ContainersLen);
@@ -98,15 +97,15 @@ namespace SafeApp.Utilities
 
     internal ContainersReq(ContainersReqNative native) {
       App = native.App;
-      Containers = BindingUtils.CopyToObjectList<ContainerPermissions>(native.ContainersPtr, native.ContainersLen);
+      Containers = BindingUtils.CopyToObjectList<ContainerPermissions>(native.ContainersPtr, (int) native.ContainersLen);
     }
 
     internal ContainersReqNative ToNative() {
       return new ContainersReqNative() {
         App = App,
         ContainersPtr = BindingUtils.CopyFromObjectList(Containers),
-        ContainersLen = (IntPtr) Containers.Count,
-        ContainersCap = (IntPtr) 0
+        ContainersLen = (ulong) Containers.Count,
+        ContainersCap = 0
       };
     }
   }
@@ -114,8 +113,8 @@ namespace SafeApp.Utilities
   internal struct ContainersReqNative {
     public AppExchangeInfo App;
     public IntPtr ContainersPtr;
-    public IntPtr ContainersLen;
-    public IntPtr ContainersCap;
+    public ulong ContainersLen;
+    public ulong ContainersCap;
 
     internal void Free() {
       BindingUtils.FreeList(ref ContainersPtr, ref ContainersLen);
@@ -148,15 +147,15 @@ namespace SafeApp.Utilities
 
     internal ShareMDataReq(ShareMDataReqNative native) {
       App = native.App;
-      Mdata = BindingUtils.CopyToObjectList<ShareMData>(native.MdataPtr, native.MdataLen);
+      Mdata = BindingUtils.CopyToObjectList<ShareMData>(native.MdataPtr, (int) native.MdataLen);
     }
 
     internal ShareMDataReqNative ToNative() {
       return new ShareMDataReqNative() {
         App = App,
         MdataPtr = BindingUtils.CopyFromObjectList(Mdata),
-        MdataLen = (IntPtr) Mdata.Count,
-        MdataCap = (IntPtr) 0
+        MdataLen = (ulong) Mdata.Count,
+        MdataCap = 0
       };
     }
   }
@@ -164,8 +163,8 @@ namespace SafeApp.Utilities
   internal struct ShareMDataReqNative {
     public AppExchangeInfo App;
     public IntPtr MdataPtr;
-    public IntPtr MdataLen;
-    public IntPtr MdataCap;
+    public ulong MdataLen;
+    public ulong MdataCap;
 
     internal void Free() {
       BindingUtils.FreeList(ref MdataPtr, ref MdataLen);
@@ -190,18 +189,18 @@ namespace SafeApp.Utilities
     internal AuthGranted(AuthGrantedNative native) {
       AppKeys = native.AppKeys;
       AccessContainerInfo = native.AccessContainerInfo;
-      AccessContainerEntry = native.AccessContainerEntry;
-      BootstrapConfig = BindingUtils.CopyToByteList(native.BootstrapConfigPtr, native.BootstrapConfigLen);
+      AccessContainerEntry = new AccessContainerEntry(native.AccessContainerEntry);
+      BootstrapConfig = BindingUtils.CopyToByteList(native.BootstrapConfigPtr, (int) native.BootstrapConfigLen);
     }
 
     internal AuthGrantedNative ToNative() {
       return new AuthGrantedNative() {
         AppKeys = AppKeys,
         AccessContainerInfo = AccessContainerInfo,
-        AccessContainerEntry = AccessContainerEntry,
+        AccessContainerEntry = AccessContainerEntry.ToNative(),
         BootstrapConfigPtr = BindingUtils.CopyFromByteList(BootstrapConfig),
-        BootstrapConfigLen = (IntPtr) BootstrapConfig.Count,
-        BootstrapConfigCap = (IntPtr) 0
+        BootstrapConfigLen = (ulong) BootstrapConfig.Count,
+        BootstrapConfigCap = 0
       };
     }
   }
@@ -209,12 +208,13 @@ namespace SafeApp.Utilities
   internal struct AuthGrantedNative {
     public AppKeys AppKeys;
     public AccessContInfo AccessContainerInfo;
-    public AccessContainerEntry AccessContainerEntry;
+    public AccessContainerEntryNative AccessContainerEntry;
     public IntPtr BootstrapConfigPtr;
-    public IntPtr BootstrapConfigLen;
-    public IntPtr BootstrapConfigCap;
+    public ulong BootstrapConfigLen;
+    public ulong BootstrapConfigCap;
 
     internal void Free() {
+      AccessContainerEntry.Free();
       BindingUtils.FreeList(ref BootstrapConfigPtr, ref BootstrapConfigLen);
     }
   }
@@ -246,9 +246,29 @@ namespace SafeApp.Utilities
 
   [PublicAPI]
   public struct AccessContainerEntry {
-    public IntPtr Ptr;
-    public IntPtr Len;
-    public IntPtr Cap;
+    public List<ContainerInfo> Entry;
+
+    internal AccessContainerEntry(AccessContainerEntryNative native) {
+      Entry = BindingUtils.CopyToObjectList<ContainerInfo>(native.EntryPtr, (int) native.EntryLen);
+    }
+
+    internal AccessContainerEntryNative ToNative() {
+      return new AccessContainerEntryNative() {
+        EntryPtr = BindingUtils.CopyFromObjectList(Entry),
+        EntryLen = (ulong) Entry.Count,
+        EntryCap = 0
+      };
+    }
+  }
+
+  internal struct AccessContainerEntryNative {
+    public IntPtr EntryPtr;
+    public ulong EntryLen;
+    public ulong EntryCap;
+
+    internal void Free() {
+      BindingUtils.FreeList(ref EntryPtr, ref EntryLen);
+    }
   }
 
   [PublicAPI]
@@ -287,14 +307,14 @@ namespace SafeApp.Utilities
     public ulong EntryVersion;
 
     internal MDataValue(MDataValueNative native) {
-      Content = BindingUtils.CopyToByteList(native.ContentPtr, native.ContentLen);
+      Content = BindingUtils.CopyToByteList(native.ContentPtr, (int) native.ContentLen);
       EntryVersion = native.EntryVersion;
     }
 
     internal MDataValueNative ToNative() {
       return new MDataValueNative() {
         ContentPtr = BindingUtils.CopyFromByteList(Content),
-        ContentLen = (IntPtr) Content.Count,
+        ContentLen = (ulong) Content.Count,
         EntryVersion = EntryVersion
       };
     }
@@ -302,7 +322,7 @@ namespace SafeApp.Utilities
 
   internal struct MDataValueNative {
     public IntPtr ContentPtr;
-    public IntPtr ContentLen;
+    public ulong ContentLen;
     public ulong EntryVersion;
 
     internal void Free() {
@@ -315,20 +335,20 @@ namespace SafeApp.Utilities
     public List<byte> Val;
 
     internal MDataKey(MDataKeyNative native) {
-      Val = BindingUtils.CopyToByteList(native.ValPtr, native.ValLen);
+      Val = BindingUtils.CopyToByteList(native.ValPtr, (int) native.ValLen);
     }
 
     internal MDataKeyNative ToNative() {
       return new MDataKeyNative() {
         ValPtr = BindingUtils.CopyFromByteList(Val),
-        ValLen = (IntPtr) Val.Count
+        ValLen = (ulong) Val.Count
       };
     }
   }
 
   internal struct MDataKeyNative {
     public IntPtr ValPtr;
-    public IntPtr ValLen;
+    public ulong ValLen;
 
     internal void Free() {
       BindingUtils.FreeList(ref ValPtr, ref ValLen);
@@ -351,7 +371,7 @@ namespace SafeApp.Utilities
       CreatedNsec = native.CreatedNsec;
       ModifiedSec = native.ModifiedSec;
       ModifiedNsec = native.ModifiedNsec;
-      UserMetadata = BindingUtils.CopyToByteList(native.UserMetadataPtr, native.UserMetadataLen);
+      UserMetadata = BindingUtils.CopyToByteList(native.UserMetadataPtr, (int) native.UserMetadataLen);
       DataMapName = native.DataMapName;
     }
 
@@ -363,8 +383,8 @@ namespace SafeApp.Utilities
         ModifiedSec = ModifiedSec,
         ModifiedNsec = ModifiedNsec,
         UserMetadataPtr = BindingUtils.CopyFromByteList(UserMetadata),
-        UserMetadataLen = (IntPtr) UserMetadata.Count,
-        UserMetadataCap = (IntPtr) 0,
+        UserMetadataLen = (ulong) UserMetadata.Count,
+        UserMetadataCap = 0,
         DataMapName = DataMapName
       };
     }
@@ -377,8 +397,8 @@ namespace SafeApp.Utilities
     public long ModifiedSec;
     public uint ModifiedNsec;
     public IntPtr UserMetadataPtr;
-    public IntPtr UserMetadataLen;
-    public IntPtr UserMetadataCap;
+    public ulong UserMetadataLen;
+    public ulong UserMetadataCap;
     [MarshalAs(UnmanagedType.ByValArray, SizeConst = (int) AppConstants.XorNameLen)]
     public byte[] DataMapName;
 

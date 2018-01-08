@@ -86,8 +86,6 @@ namespace SafeApp.Misc {
     /// <returns>(Encrypt Public Key, Encrypt Secret Key)</returns>
     public async Task<(NativeHandle, NativeHandle)> EncGenerateKeyPairAsync() {
       var (encPubKeyH, encSecKeyH) = await _appBindings.EncGenerateKeyPairAsync(_appPtr);
-      var pubKey = new NativeHandle(encPubKeyH);
-      var secKey = new NativeHandle(encSecKeyH);
       return (new NativeHandle(encPubKeyH, EncPubKeyFreeAsync), new NativeHandle(encSecKeyH, EncSecretKeyFreeAsync));
     }
     /// <summary>
